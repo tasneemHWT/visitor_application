@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:visitor_application/main.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 // ===== COLORS =====
 const kPrimaryColor = Color(0xff856EE1);
@@ -24,7 +25,45 @@ class _LoginPageState extends State<LoginPage> {
   bool showPassword = false;
   String errorText = '';
 
-  void login() {
+  @override
+  void initState() {
+    super.initState();
+    _checkLoggedIn();
+  }
+
+  void _checkLoggedIn() async {
+    final loggedIn = await checkLogin();
+    if (!mounted) return;
+
+    if (loggedIn) {
+      final isAdmin = await getAdminStatus();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => HomeScreen(isAdmin: isAdmin)),
+        );
+      });
+    }
+  }
+
+  Future<void> saveLogin(bool isAdmin) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('isLoggedIn', true);
+    await prefs.setBool('isAdmin', isAdmin);
+  }
+
+  Future<bool> checkLogin() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool('isLoggedIn') ?? false;
+  }
+
+  Future<bool> getAdminStatus() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool('isAdmin') ?? false;
+  }
+
+  void login() async {
     final username = usernameController.text.trim();
     final password = passwordController.text.trim();
 
@@ -32,6 +71,7 @@ class _LoginPageState extends State<LoginPage> {
     final isUser = username == 'User' && password == 'User';
 
     if (isAdmin || isUser) {
+      await saveLogin (isAdmin);
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
@@ -70,7 +110,7 @@ class _LoginPageState extends State<LoginPage> {
                 Icon(Icons.lock_outline, size: 70, color: kWhite),
                 SizedBox(height: 12),
                 Text(
-                  'Welcome Back',
+                  'Visitors',
                   style: TextStyle(
                     fontSize: 26,
                     fontWeight: FontWeight.bold,
@@ -183,6 +223,47 @@ class _LoginPageState extends State<LoginPage> {
                         ),
                       ),
                     ),
+
+                    SizedBox(height: 200),
+                    // const Padding(
+                    //   padding: EdgeInsets.only(bottom: 12),
+                    //
+                    //   child: Text(
+                    //     'Powered by Bit Partners',
+                    //     style: TextStyle(
+                    //       fontSize: 16,
+                    //       color: Colors.black,
+                    //       fontWeight: FontWeight.bold
+                    //     ),
+                    //   ),
+                    // ),
+                    Column(
+                      children: [
+
+                        Center(
+                          child: Column(
+                            children: [
+                              Image.asset(
+                                'assets/images/BitLogo.png',
+                                height: 90,
+                              ),
+
+                              const SizedBox(height: 10),
+
+                              const Text(
+                                'Powered by Bit Partners',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  color: Colors.black,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    )
                   ],
                 ),
               ),

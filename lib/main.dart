@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:visitor_application/Login.dart';
+import 'Screen/Delete_Visitor.dart';
 import 'Screen/add_members_page.dart';
 import 'Screen/form.dart';
 import 'Screen/history_list.dart';
 import 'Screen/mail_configuration.dart';
 import 'Screen/pending_list.dart';
 import 'Screen/send_mail.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 
 const kPrimaryColor = Color(0xff856EE1);
@@ -73,11 +75,24 @@ class _HomeScreenState extends State<HomeScreen> {
   int selectedTab = 0; // 0 = Pending, 1 = History
   int pendingReloadKey = 0;
 
-  void logout() {
+  // void logout() {
+  //   Navigator.pushAndRemoveUntil(
+  //     context,
+  //     MaterialPageRoute(builder: (_) => const LoginPage()),
+  //         (route) => false,
+  //   );
+  // }
+
+  Future<void> logout() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.clear(); // remove all login info
+
+    // Navigate to LoginPage **after clearing prefs**
+    if (!mounted) return;
     Navigator.pushAndRemoveUntil(
       context,
       MaterialPageRoute(builder: (_) => const LoginPage()),
-          (route) => false,
+          (route) => false, // remove all previous routes
     );
   }
 
@@ -111,13 +126,25 @@ class _HomeScreenState extends State<HomeScreen> {
 
               // Send Email visible to everyone
               ListTile(
-                leading: Icon(Icons.mail, color: kPrimaryColor),
-                title: const Text('Send Email'),
+                leading: Icon(Icons.download_sharp, color: kPrimaryColor),
+                title: const Text('Generate Report'),
                 onTap: () {
                   Navigator.pop(context); // close drawer
                   Navigator.push(
                     context,
                     MaterialPageRoute(builder: (_) => const SendMailPage()),
+                  );
+                },
+              ),
+
+              ListTile(
+                leading: Icon(Icons.delete, color: kPrimaryColor),
+                title: const Text('Delete Data'),
+                onTap: () {
+                  Navigator.pop(context); // close drawer
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const DeleteDataPage()),
                   );
                 },
               ),
@@ -136,20 +163,20 @@ class _HomeScreenState extends State<HomeScreen> {
                   },
                 ),
 
-                ListTile(
-                  leading: Icon(Icons.settings, color: kPrimaryColor),
-                  title: const Text('Mail Configuration'),
-                  onTap: () {
-                    Navigator.pop(context); // close drawer
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const MailConfiguration()),
-                    );
-                  },
-                ),
+                // ListTile(
+                //   leading: Icon(Icons.settings, color: kPrimaryColor),
+                //   title: const Text('Mail Configuration'),
+                //   onTap: () {
+                //     Navigator.pop(context); // close drawer
+                //     Navigator.push(
+                //       context,
+                //       MaterialPageRoute(builder: (_) => const MailConfiguration()),
+                //     );
+                //   },
+                // ),
               ],
 
-              const Divider(),
+              // const Divider(),
               const SizedBox(height: 40),
 
               ListTile(

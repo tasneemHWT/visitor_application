@@ -1,28 +1,16 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:flutter_image_compress/flutter_image_compress.dart';
-import 'package:visitor_application/Screen/mail_configuration.dart';
-import '../Database/db_helper.dart';
-import 'package:csv/csv.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:mailer/mailer.dart';
-import 'package:mailer/smtp_server/gmail.dart';
-import 'package:visitor_application/notifiers.dart';
-import 'package:archive/archive.dart';
-import 'package:archive/archive_io.dart';
-import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
+import 'package:share_plus/share_plus.dart';
+import 'package:intl/intl.dart';
+import '../Database/db_helper.dart';
+import 'package:image/image.dart' as img;
+import 'dart:typed_data';
+import 'package:pdf/pdf.dart';
+import 'package:csv/csv.dart';
 
 const kPrimaryColor = Color(0xff856EE1);
-const kBackgroundColor = Color(0xffF5F3FA);
-const kBlackLight = Color(0xFF6F6F6F);
-const kWhite = Color(0xFFFFFFFF);
-const kBlack = Color(0xFF000000);
-const kWhiteDarker = Color(0xFFE5E5E5);
-const kPrimaryColorLight = Color(0xFFC655EE);
-const kTransparent = Color(0x00FFFFFF);
-const kInputBorder = Color(0xFFC4C4C4);
-const kBlueSelected = Color(0xFFA0E2FF);
 
 class SendMailPage extends StatefulWidget {
   const SendMailPage({super.key});
@@ -33,286 +21,610 @@ class SendMailPage extends StatefulWidget {
 
 class _SendMailPageState extends State<SendMailPage> {
   List<Map<String, dynamic>> visitors = [];
-  bool isLoading = true;
+  bool isLoading = false;
+  bool hasSearched = false;
 
-  // TODO: Replace with your SMTP credentials
-  final String smtpEmail = globalMailConfig.fromMail;//'test.hwspl@gmail.com';
-  final String smtpAppPassword = globalMailConfig.appPassword;//'vbgr wlih qkrr fcvw'; // 16-char app password
+  DateTime? _fromDate;
+  DateTime? _toDate;
+
+  final DateFormat _formatter = DateFormat('yyyy-MM-dd');
+
+
+  int progress = 0;
+  int total = 0;
+
 
   @override
   void initState() {
     super.initState();
-    fetchVisitors();
+    _fromDate = DateTime.now().subtract(const Duration(days: 7));
+    _toDate = DateTime.now();
   }
 
-  Future<void> fetchVisitors() async {
+
+  Future<Uint8List?> compressImage(String path) async {
     try {
-      final data = await DBHelper.instance.getFullListOfVisitor();
-      setState(() {
-        visitors = data;
-        isLoading = false;
-      });
+      final file = File(path);
+      if (!file.existsSync()) return null;
+
+      final bytes = await file.readAsBytes();
+      final image = img.decodeImage(bytes);
+
+      if (image == null) return null;
+
+      final resized = img.copyResize(image, width: 400);
+
+      return Uint8List.fromList(
+        img.encodeJpg(resized, quality: 60),
+      );
     } catch (e) {
-      await _showAlert('Failed to fetch visitors: $e');
+      return null;
     }
   }
 
 
-  // Future<File?> compressImage(String path) async {
-  //   final dir = await getTemporaryDirectory();
-  //   final fileName = path.split('/').last;
-  //   final timestamp = DateTime.now().millisecondsSinceEpoch;
-  //   final targetPath = '${dir.path}/${timestamp}_$fileName'; // unique temp path
-  //
-  //   final XFile? compressedXFile = await FlutterImageCompress.compressAndGetFile(
-  //     path,
-  //     targetPath,
-  //     quality: 60,
-  //     format: CompressFormat.png, // keep original format
-  //   );
-  //
-  //   if (compressedXFile == null) return null;
-  //   return File(compressedXFile.path);
-  // }
-  //
-  // Future<String> createPhotosZip() async {
-  //
-  //   final dir = await getApplicationDocumentsDirectory();
-  //   final zipPath =
-  //       '${dir.path}/visitor_photos_${DateTime.now().millisecondsSinceEpoch}.zip';
-  //
-  //   final encoder = ZipFileEncoder();
-  //
-  //   // 🔥 IMPORTANT: level 0 = fastest (no recompression)
-  //   encoder.create(zipPath, level: 0);
-  //
-  //   for (var visitor in visitors) {
-  //     // -------- Visitor Photo --------
-  //     final visitorPhotoPath = visitor['visitor_photo_path'];
-  //     if (visitorPhotoPath != null &&
-  //         visitorPhotoPath.isNotEmpty &&
-  //         visitorPhotoPath != 'null') {
-  //
-  //       final originalFile = File(visitorPhotoPath.trim());
-  //
-  //       if (await originalFile.exists()) {
-  //         final compressedFile =
-  //         await compressImage(originalFile.path);
-  //
-  //         if (compressedFile != null &&
-  //             await compressedFile.exists()) {
-  //
-  //           encoder.addFile(compressedFile);
-  //           print('Added compressed visitor photo');
-  //         }
-  //       }
-  //     }
-  //
-  //     // -------- ID Photos --------
-  //     final idPhotoPaths = visitor['id_photo_path'];
-  //
-  //     print('id_photo_path type: ${visitor['id_photo_path'].runtimeType}');
-  //     print('id_photo_path value: ${visitor['id_photo_path']}');
-  //
-  //     if (idPhotoPaths != null &&
-  //         idPhotoPaths.isNotEmpty &&
-  //         idPhotoPaths != 'null') {
-  //
-  //       final paths = idPhotoPaths.contains(',')
-  //           ? idPhotoPaths.split(',').map((e) => e.trim()).toList()
-  //           : [idPhotoPaths.trim()];
-  //
-  //       for (var path in paths) {
-  //         if (path.isEmpty) continue;
-  //
-  //         final originalFile = File(path);
-  //
-  //         if (await originalFile.exists()) {
-  //           final compressedFile =
-  //           await compressImage(originalFile.path);
-  //
-  //           if (compressedFile != null &&
-  //               await compressedFile.exists()) {
-  //
-  //             encoder.addFile(compressedFile);
-  //             print('Added compressed ID photo');
-  //           }
-  //         }
-  //       }
-  //     }
-  //   }
-  //
-  //   encoder.close();
-  //
-  //   final zipFile = File(zipPath);
-  //   print('Zip file size: ${await zipFile.length()} bytes');
-  //
-  //   return zipPath;
-  // }
+  Future<pw.Widget?> buildImage(String path) async {
+    final bytes = await compressImage(path);
+    if (bytes == null) return null;
 
-
-  // Compress image and save temporarily
-  Future<File?> compressImage(String path, int counter) async {
-    final dir = await getTemporaryDirectory();
-    final fileName = path.split('/').last;
-    final timestamp = DateTime.now().millisecondsSinceEpoch;
-    final targetPath = '${dir.path}/${timestamp}_${counter}_$fileName';
-
-    final XFile? compressedXFile = await FlutterImageCompress.compressAndGetFile(
-      path,
-      targetPath,
-      quality: 60,
-      format: path.toLowerCase().endsWith('.png') ? CompressFormat.png : CompressFormat.jpeg,
+    return pw.Image(
+      pw.MemoryImage(bytes),
+      width: 90,
+      height: 90,
     );
-
-    if (compressedXFile == null) return null;
-    return File(compressedXFile.path);
   }
 
-  // Future<String> createVisitorPhotosPDF() async {
-  //   final pdf = pw.Document();
-  //   final today = DateTime.now();
-  //   final formattedDate =
-  //       "${today.day}-${today.month.toString().padLeft(2, '0')}-${today.year}";
+
+
+  // ✅ FETCH DATA
+  // Future<void> fetchVisitors() async {
+  //   final data = await DBHelper.instance.getFullListOfVisitor();
   //
-  //   for (var visitor in visitors) {
-  //     pdf.addPage(
-  //       pw.Page(
-  //         build: (context) {
-  //           List<pw.Widget> photoWidgets = [];
+  //   List<Map<String, dynamic>> filtered = data.where((visitor) {
+  //     final dateStr = visitor['in_date'] ?? '';
+  //     try {
+  //       final parts = dateStr.split('/');
+  //       final visitorDate = DateTime(
+  //         int.parse(parts[2]),
+  //         int.parse(parts[1]),
+  //         int.parse(parts[0]),
+  //       );
   //
-  //           // Visitor photo
-  //           if (visitor['visitor_photo_path'] != null &&
-  //               visitor['visitor_photo_path'] != 'null' &&
-  //               File(visitor['visitor_photo_path']).existsSync()) {
-  //             final bytes = File(visitor['visitor_photo_path']).readAsBytesSync();
-  //             photoWidgets.add(pw.Image(pw.MemoryImage(bytes), width: 150, height: 150));
-  //           }
+  //       return visitorDate.isAfter(_fromDate!.subtract(const Duration(days: 1))) &&
+  //           visitorDate.isBefore(_toDate!.add(const Duration(days: 1)));
+  //     } catch (_) {
+  //       return false;
+  //     }
+  //   }).toList();
   //
-  //           // ID photos
-  //           final idPhotoPaths = visitor['id_photo_path'];
-  //           if (idPhotoPaths != null && idPhotoPaths != 'null' && idPhotoPaths.isNotEmpty) {
-  //             final paths = idPhotoPaths.contains(',')
-  //                 ? idPhotoPaths.split(',').map((e) => e.trim()).toList()
-  //                 : [idPhotoPaths.trim()];
-  //
-  //             for (var path in paths) {
-  //               if (path.isEmpty) continue;
-  //               final file = File(path);
-  //               if (file.existsSync()) {
-  //                 final bytes = file.readAsBytesSync();
-  //                 photoWidgets.add(pw.Image(pw.MemoryImage(bytes), width: 150, height: 150));
-  //               }
-  //             }
-  //           }
-  //
-  //           return pw.Column(
-  //             crossAxisAlignment: pw.CrossAxisAlignment.start,
-  //             children: [
-  //               pw.Text('Name: ${visitor['name'] ?? ''}', style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold)),
-  //               pw.Text('Company: ${visitor['company'] ?? ''}'),
-  //               pw.Text('Mobile: ${visitor['mobile'] ?? ''}'),
-  //               pw.Text('Email: ${visitor['email'] ?? ''}'),
-  //               pw.Text('Purpose: ${visitor['purpose'] ?? ''}'),
-  //               pw.SizedBox(height: 10),
-  //               pw.Wrap(
-  //                 spacing: 10,
-  //                 runSpacing: 10,
-  //                 children: photoWidgets,
-  //               ),
-  //             ],
-  //           );
-  //         },
-  //       ),
-  //     );
-  //   }
-  //
-  //   final dir = await getApplicationDocumentsDirectory();
-  //   final path = '${dir.path}/visitor_photos_$formattedDate.pdf';
-  //   final file = File(path);
-  //   await file.writeAsBytes(await pdf.save());
-  //   return path;
+  //   setState(() {
+  //     visitors = filtered;
+  //     isLoading = false;
+  //   });
   // }
 
-  Future<String> createVisitorPhotosPDF() async {
-    final pdf = pw.Document();
-    final today = DateTime.now();
-    final formattedDate =
-        "${today.day}-${today.month.toString().padLeft(2, '0')}-${today.year}";
+  // ✅ DATE PICKERS
 
-    // Add all visitors in one page flow
-    pdf.addPage(
-      pw.MultiPage(
-        build: (context) {
-          List<pw.Widget> visitorWidgets = [];
+  Future<void> fetchVisitors() async {
+    final data = await DBHelper.instance.getFullListOfVisitor();
 
-          for (var visitor in visitors) {
-            List<pw.Widget> photoWidgets = [];
+    List<Map<String, dynamic>> filtered = data.where((visitor) {
+      final dateStr = visitor['in_date'] ?? '';
 
-            // Visitor photo
-            if (visitor['visitor_photo_path'] != null &&
-                visitor['visitor_photo_path'] != 'null' &&
-                File(visitor['visitor_photo_path']).existsSync()) {
-              final bytes = File(visitor['visitor_photo_path']).readAsBytesSync();
-              photoWidgets.add(pw.Image(pw.MemoryImage(bytes), width: 150, height: 150));
-            }
+      try {
+        final parts = dateStr.split('/');
 
-            // ID photos
-            final idPhotoPaths = visitor['id_photo_path'];
-            if (idPhotoPaths != null && idPhotoPaths != 'null' && idPhotoPaths.isNotEmpty) {
-              final paths = idPhotoPaths.contains(',')
-                  ? idPhotoPaths.split(',').map((e) => e.trim()).toList()
-                  : [idPhotoPaths.trim()];
+        final visitorDate = DateTime(
+          int.parse(parts[2]),
+          int.parse(parts[1]),
+          int.parse(parts[0]),
+        );
 
-              for (var path in paths) {
-                if (path.isEmpty) continue;
-                final file = File(path);
-                if (file.existsSync()) {
-                  final bytes = file.readAsBytesSync();
-                  photoWidgets.add(pw.Image(pw.MemoryImage(bytes), width: 150, height: 150));
-                }
-              }
-            }
-
-            // Add visitor data + photos
-            visitorWidgets.add(
-              pw.Column(
-                crossAxisAlignment: pw.CrossAxisAlignment.start,
-                children: [
-                  pw.Text('Name: ${visitor['name'] ?? ''}', style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold)),
-                  pw.Text('Company: ${visitor['company'] ?? ''}'),
-                  pw.Text('Mobile: ${visitor['mobile'] ?? ''}'),
-                  pw.Text('Email: ${visitor['email'] ?? ''}'),
-                  pw.Text('Purpose: ${visitor['purpose'] ?? ''}'),
-                  pw.SizedBox(height: 10),
-                  pw.Wrap(
-                    spacing: 10,
-                    runSpacing: 10,
-                    children: photoWidgets,
-                  ),
-                  pw.Divider(thickness: 2), // <<< Separator line between visitors
-                  pw.SizedBox(height: 10),   // optional spacing
-                ],
-              ),
+        return visitorDate.isAfter(
+          _fromDate!.subtract(const Duration(days: 1)),
+        ) &&
+            visitorDate.isBefore(
+              _toDate!.add(const Duration(days: 1)),
             );
-          }
+      } catch (_) {
+        return false;
+      }
+    }).toList();
 
-          return visitorWidgets;
-        },
-      ),
+    // 🔥 ADD THIS SORT (CRITICAL FIX)
+    filtered.sort((a, b) {
+      final da = _parseDate(a);
+      final db = _parseDate(b);
+      return db.compareTo(da); // latest first
+    });
+
+    setState(() {
+      visitors = filtered;
+      isLoading = false;
+    });
+  }
+
+  DateTime _parseDate(Map<String, dynamic> v) {
+    final dateStr = v['in_date'] ?? '';
+    final timeStr = v['in_time'] ?? '';
+
+    try {
+      final parts = dateStr.replaceAll(' ', '').split('/');
+      final day = int.parse(parts[0]);
+      final month = int.parse(parts[1]);
+      final year = int.parse(parts[2]);
+
+      int hour = 0;
+      int minute = 0;
+
+      if (timeStr.isNotEmpty) {
+        final t = timeStr.replaceAll(' ', '');
+        final isPM = t.toUpperCase().contains('PM');
+        final clean = t.replaceAll(RegExp(r'[APMapm]'), '');
+        final hm = clean.split(':');
+
+        hour = int.parse(hm[0]);
+        minute = int.parse(hm[1]);
+
+        if (isPM && hour != 12) hour += 12;
+        if (!isPM && hour == 12) hour = 0;
+      }
+
+      return DateTime(year, month, day, hour, minute);
+    } catch (_) {
+      return DateTime(1900);
+    }
+  }
+
+
+  Future<void> _pickFromDate() async {
+    final date = await showDatePicker(
+      context: context,
+      initialDate: _fromDate!,
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2100),
     );
+    if (date != null) setState(() => _fromDate = date);
+  }
 
-    final dir = await getApplicationDocumentsDirectory();
-    final path = '${dir.path}/visitor_photos_$formattedDate.pdf';
-    final file = File(path);
-    await file.writeAsBytes(await pdf.save());
+  Future<void> _pickToDate() async {
+    final date = await showDatePicker(
+      context: context,
+      initialDate: _toDate!,
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2100),
+    );
+    if (date != null) setState(() => _toDate = date);
+  }
+
+  // ✅ BUTTON LOGIC
+  // Future<void> handleMainButton() async {
+  //   if (!hasSearched || visitors.isEmpty) {
+  //     setState(() {
+  //       isLoading = true;
+  //       hasSearched = true;
+  //     });
+  //
+  //     await fetchVisitors();
+  //
+  //     if (visitors.isEmpty) {
+  //       ScaffoldMessenger.of(context).showSnackBar(
+  //         const SnackBar(content: Text('No data found')),
+  //       );
+  //     }
+  //   } else {
+  //     await generateAndShare();
+  //   }
+  // }
+
+  // ✅ SAFE DIRECTORY (IMPORTANT FIX)
+
+  // Future<void> handleMainButton({bool? includeImages}) async {
+  //   if (!hasSearched || visitors.isEmpty) {
+  //     setState(() {
+  //       isLoading = true;
+  //       hasSearched = true;
+  //     });
+  //
+  //     await fetchVisitors();
+  //
+  //     setState(() => isLoading = false);
+  //
+  //     if (visitors.isEmpty) {
+  //       ScaffoldMessenger.of(context).showSnackBar(
+  //         const SnackBar(content: Text('No data found')),
+  //       );
+  //       return;
+  //     }
+  //   } else {
+  //     // Only called when sharing buttons are pressed
+  //     if (includeImages != null) {
+  //       setState(() => isLoading = true);
+  //       final pdfPath = await createPDF(includeImages: includeImages);
+  //       setState(() => isLoading = false);
+  //
+  //       if (pdfPath != null) {
+  //         await Share.shareXFiles(
+  //           [XFile(pdfPath, mimeType: 'application/pdf')],
+  //           text: 'Visitor Report',
+  //         );
+  //       }
+  //     }
+  //   }
+  // }
+
+  // Future<void> handleMainButton({bool? withImages}) async {
+  //   // 🔍 First time → SEARCH
+  //   if (!hasSearched) {
+  //     setState(() {
+  //       isLoading = true;
+  //       hasSearched = true;
+  //     });
+  //
+  //     await fetchVisitors();
+  //
+  //     setState(() => isLoading = false);
+  //
+  //     if (visitors.isEmpty) {
+  //       ScaffoldMessenger.of(context).showSnackBar(
+  //         const SnackBar(content: Text('No data found')),
+  //       );
+  //     }
+  //     return;
+  //   }
+  //
+  //   // 📤 After search → SHARE
+  //   if (withImages == null) return; // safety
+  //
+  //   setState(() => isLoading = true);
+  //
+  //   String? filePath;
+  //
+  //   if (withImages) {
+  //     // ✅ SHARE WITH IMAGES → PDF
+  //     filePath = await createPDF(includeImages: true);
+  //   } else {
+  //     // ✅ SHARE WITHOUT IMAGES → CSV
+  //     filePath = await createCSV();
+  //   }
+  //
+  //   setState(() => isLoading = false);
+  //
+  //   if (filePath != null) {
+  //     await Share.shareXFiles([
+  //       XFile(filePath),
+  //     ]);
+  //   }
+  // }
+
+  Future<void> handleMainButton({bool? withImages}) async {
+    // 🔍 ALWAYS SEARCH when button pressed without parameter
+    if (withImages == null) {
+      setState(() {
+        isLoading = true;
+        hasSearched = true;
+      });
+
+      await fetchVisitors();
+
+      setState(() => isLoading = false);
+
+      if (visitors.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No data found')),
+        );
+      }
+      return;
+    }
+
+    // 📤 SHARE LOGIC
+    setState(() => isLoading = true);
+
+    String? filePath;
+
+    if (withImages) {
+      filePath = await createPDF(includeImages: true);
+    } else {
+      filePath = await createCSV();
+    }
+
+    setState(() => isLoading = false);
+
+    if (filePath != null) {
+      await Share.shareXFiles([XFile(filePath)]);
+    }
+  }
+
+  Future<Directory?> getReportsDirectory() async {
+    final dir = await getTemporaryDirectory();
+    final reportsDir = Directory('${dir.path}/Reports');
+
+    if (!await reportsDir.exists()) {
+      await reportsDir.create(recursive: true);
+    }
+
+    return reportsDir;
+  }
+
+
+  Future<String?> createCSV() async {
+    final dir = await getReportsDirectory();
+    if (dir == null) return null;
+
+    progress = 0;
+    total = visitors.length;
+
+    List<List<dynamic>> rows = [];
+
+    rows.add([
+      'Sr No',
+      'Name',
+      'Mobile',
+      'Email',
+      'Address',
+      'Company',
+      'Meeting Person',
+      'ID Proof',
+      'ID Number',
+      'In Date',
+      'Out Date',
+      'In Time',
+      'Out Time',
+      'Vehicle',
+      'Purpose',
+    ]);
+
+    for (int i = 0; i < visitors.length; i++) {
+      final v = visitors[i];
+
+      rows.add([
+        i + 1,
+        v['name'] ?? '',
+        v['mobile'] ?? '',
+        v['email'] ?? '',
+        v['address'] ?? '',
+        v['company'] ?? '',
+        v['meeting_person'] ?? '',
+        v['id_proof'] ?? '',
+        v['id_number'] ?? '',
+        v['in_date'] ?? '',
+        v['out_date'] ?? '',
+        v['in_time'] ?? '',
+        v['out_time'] ?? '',
+        v['vehicle'] ?? '',
+        v['purpose'] ?? '',
+      ]);
+
+      progress++;
+      setState(() {});
+    }
+
+    String csvData = const ListToCsvConverter().convert(rows);
+
+    final path = '${dir.path}/visitor_report.csv';
+    await File(path).writeAsString(csvData);
+
     return path;
   }
 
 
-  Future<String> exportVisitorsToCSV() async {
-    List<List<String>> csvData = [
-      [
+  // Future<String?> createPDF() async {
+  //   final dir = await getReportsDirectory();
+  //   if (dir == null) return null;
+  //
+  //   final pdf = pw.Document();
+  //
+  //   progress = 0;
+  //   total = visitors.length;
+  //
+  //   List<pw.Widget> allWidgets = [];
+  //
+  //   // 🔹 Title (only once)
+  //   allWidgets.add(
+  //     pw.Text(
+  //       'Visitor Report',
+  //       style: pw.TextStyle(
+  //         fontSize: 20,
+  //         fontWeight: pw.FontWeight.bold,
+  //       ),
+  //     ),
+  //   );
+  //   allWidgets.add(pw.SizedBox(height: 12));
+  //
+  //   // 🔹 Compact visitor card row
+  //   for (int i = 0; i < visitors.length; i++) {
+  //     final v = visitors[i];
+  //
+  //     await Future.delayed(const Duration(milliseconds: 5));
+  //
+  //     // 🔹 Images
+  //     final visitorImage = await buildImage(v['visitor_photo_path'] ?? '');
+  //
+  //     List<pw.Widget> idImages = [];
+  //     final idPhotos = v['id_photo_path'];
+  //     if (idPhotos != null && idPhotos != 'null') {
+  //       final paths = idPhotos.contains(',')
+  //           ? idPhotos.split(',').map((e) => e.trim()).toList()
+  //           : [idPhotos.trim()];
+  //
+  //       for (var path in paths) {
+  //         if (path.isEmpty) continue;
+  //         final imgWidget = await buildImage(path);
+  //         if (imgWidget != null) idImages.add(imgWidget);
+  //       }
+  //     }
+  //
+  //     // 🔹 Visitor card layout
+  //     final visitorCard = pw.Container(
+  //       margin: const pw.EdgeInsets.only(bottom: 6),
+  //       padding: const pw.EdgeInsets.all(6),
+  //       decoration: pw.BoxDecoration(
+  //         border: pw.Border.all(width: 0.3),
+  //       ),
+  //       child: pw.Row(
+  //         crossAxisAlignment: pw.CrossAxisAlignment.start,
+  //         children: [
+  //           // Visitor photo
+  //           if (visitorImage != null)
+  //             pw.Container(
+  //               margin: const pw.EdgeInsets.only(right: 6),
+  //               child: visitorImage,
+  //             ),
+  //
+  //           // Details column
+  //           pw.Expanded(
+  //             child: pw.Column(
+  //               crossAxisAlignment: pw.CrossAxisAlignment.start,
+  //               children: [
+  //                 pw.Text(v['name'] ?? '',
+  //                     style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+  //                 pw.Text('Mobile: ${v['mobile'] ?? ''}'),
+  //                 pw.Text('Email: ${v['email'] ?? ''}'),
+  //                 pw.Text('Address: ${v['address'] ?? ''}'),
+  //                 pw.Text('Company: ${v['company'] ?? ''}'),
+  //                 pw.Text('Meeting Person: ${v['meeting_person'] ?? ''}'),
+  //                 pw.Text('ID Proof: ${v['id_proof'] ?? ''}'),
+  //                 pw.Text('ID Number: ${v['id_number'] ?? ''}'),
+  //                 pw.Text('In Date: ${v['in_date'] ?? ''}'),
+  //                 pw.Text('Out Date: ${v['out_date'] ?? ''}'),
+  //                 pw.Text('In Time: ${v['in_time'] ?? ''}'),
+  //                 pw.Text('Out Time: ${v['out_time'] ?? ''}'),
+  //                 pw.Text('Vehicle: ${v['vehicle'] ?? ''}'),
+  //                 pw.Text('Purpose: ${v['purpose'] ?? ''}'),
+  //
+  //                 if (idImages.isNotEmpty) pw.SizedBox(height: 4),
+  //                 if (idImages.isNotEmpty)
+  //                   pw.Wrap(
+  //                     spacing: 4,
+  //                     runSpacing: 4,
+  //                     children: idImages,
+  //                   ),
+  //               ],
+  //             ),
+  //           ),
+  //         ],
+  //       ),
+  //     );
+  //
+  //     allWidgets.add(visitorCard);
+  //
+  //     // Progress update
+  //     progress++;
+  //     setState(() {});
+  //   }
+  //
+  //   pdf.addPage(
+  //     pw.MultiPage(
+  //       build: (context) => allWidgets,
+  //       pageFormat: PdfPageFormat.a4,
+  //       margin: const pw.EdgeInsets.all(12),
+  //     ),
+  //   );
+  //
+  //   final path = '${dir.path}/visitor_report.pdf';
+  //   await File(path).writeAsBytes(await pdf.save());
+  //
+  //   return path;
+  // }
+
+  Future<String?> createPDF({bool includeImages = true}) async {
+    final dir = await getReportsDirectory();
+    if (dir == null) return null;
+
+    final pdf = pw.Document();
+    progress = 0;
+    total = visitors.length;
+
+    List<pw.Widget> allWidgets = [];
+
+    // Title
+    allWidgets.add(
+      pw.Text(
+        'Visitor Report',
+        style: pw.TextStyle(
+          fontSize: 20,
+          fontWeight: pw.FontWeight.bold,
+        ),
+      ),
+    );
+    allWidgets.add(pw.SizedBox(height: 12));
+
+    if (includeImages) {
+      // 🔹 Original layout with images
+      for (int i = 0; i < visitors.length; i++) {
+        final v = visitors[i];
+        await Future.delayed(const Duration(milliseconds: 5));
+
+        final visitorImage = await buildImage(v['visitor_photo_path'] ?? '');
+        List<pw.Widget> idImages = [];
+        final idPhotos = v['id_photo_path'];
+        if (idPhotos != null && idPhotos != 'null') {
+          final paths = idPhotos.contains(',')
+              ? idPhotos.split(',').map((e) => e.trim()).toList()
+              : [idPhotos.trim()];
+          for (var path in paths) {
+            if (path.isEmpty) continue;
+            final imgWidget = await buildImage(path);
+            if (imgWidget != null) idImages.add(imgWidget);
+          }
+        }
+
+        final visitorCard = pw.Container(
+          margin: const pw.EdgeInsets.only(bottom: 6),
+          padding: const pw.EdgeInsets.all(6),
+          decoration: pw.BoxDecoration(
+            border: pw.Border.all(width: 0.3),
+          ),
+          child: pw.Row(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              if (visitorImage != null)
+                pw.Container(
+                  margin: const pw.EdgeInsets.only(right: 6),
+                  child: visitorImage,
+                ),
+              pw.Expanded(
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text(v['name'] ?? '',
+                        style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+                    pw.Text('Mobile: ${v['mobile'] ?? ''}'),
+                    pw.Text('Email: ${v['email'] ?? ''}'),
+                    pw.Text('Address: ${v['address'] ?? ''}'),
+                    pw.Text('Company: ${v['company'] ?? ''}'),
+                    pw.Text('Meeting Person: ${v['meeting_person'] ?? ''}'),
+                    pw.Text('ID Proof: ${v['id_proof'] ?? ''}'),
+                    pw.Text('ID Number: ${v['id_number'] ?? ''}'),
+                    pw.Text('In Date: ${v['in_date'] ?? ''}'),
+                    pw.Text('Out Date: ${v['out_date'] ?? ''}'),
+                    pw.Text('In Time: ${v['in_time'] ?? ''}'),
+                    pw.Text('Out Time: ${v['out_time'] ?? ''}'),
+                    pw.Text('Vehicle: ${v['vehicle'] ?? ''}'),
+                    pw.Text('Purpose: ${v['purpose'] ?? ''}'),
+                    if (idImages.isNotEmpty) pw.SizedBox(height: 4),
+                    if (idImages.isNotEmpty)
+                      pw.Wrap(
+                        spacing: 4,
+                        runSpacing: 4,
+                        children: idImages,
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+
+        allWidgets.add(visitorCard);
+
+        progress++;
+        setState(() {});
+      }
+    } else {
+      // ❌ Without images → table format
+      final headers = [
+        'Sr No',
         'Name',
         'Mobile',
         'Email',
@@ -321,361 +633,296 @@ class _SendMailPageState extends State<SendMailPage> {
         'Meeting Person',
         'ID Proof',
         'ID Number',
-        'In_date',
-        'Out_date',
+        'In Date',
+        'Out Date',
         'In Time',
         'Out Time',
         'Vehicle',
         'Purpose',
-        'Visitor Photo Path',
-        'ID Photo Path',
-      ]
-    ];
+      ];
 
-    for (var visitor in visitors) {
-      csvData.add([
-        visitor['name'] ?? '',
-        visitor['mobile'] ?? '',
-        visitor['email'] ?? '',
-        visitor['address'] ?? '',
-        visitor['company'] ?? '',
-        visitor['meeting_person'] ?? '',
-        visitor['id_proof'] ?? '',
-        visitor['id_number'] ?? '',
-        visitor['in_date'] ?? '',
-        visitor['out_date'] ?? '',
-        visitor['in_time'] ?? '',
-        visitor['out_time'] ?? '',
-        visitor['vehicle'] ?? '',
-        visitor['purpose'] ?? '',
-        visitor['visitor_photo_path'] ?? 'null',
-        visitor['id_photo_path'] ?? 'null',
-      ]);
-    }
+      final dataRows = <List<String>>[];
 
-    String csv = const ListToCsvConverter().convert(csvData);
-    final dir = await getApplicationDocumentsDirectory();
-    final path =
-        '${dir.path}/visitors_${DateTime.now().millisecondsSinceEpoch}.csv';
-    final file = File(path);
-    await file.writeAsString(csv);
-    return file.path;
-  }
+      for (int i = 0; i < visitors.length; i++) {
+        final v = visitors[i];
+        dataRows.add([
+          (i + 1).toString(),
+          v['name'] ?? '',
+          v['mobile'] ?? '',
+          v['email'] ?? '',
+          v['address'] ?? '',
+          v['company'] ?? '',
+          v['meeting_person'] ?? '',
+          v['id_proof'] ?? '',
+          v['id_number'] ?? '',
+          v['in_date'] ?? '',
+          v['out_date'] ?? '',
+          v['in_time'] ?? '',
+          v['out_time'] ?? '',
+          v['vehicle'] ?? '',
+          v['purpose'] ?? '',
+        ]);
 
-
-  // Future<void> sendEmail() async {
-  //
-  //   if (globalMailConfig.fromMail.isEmpty ||
-  //       globalMailConfig.toMail.isEmpty ||
-  //       globalMailConfig.appPassword.isEmpty) {
-  //     await _showAlert(
-  //       'Mail is not configured properly. '
-  //           'Please check sender email, recipient email, and app password.',
-  //     );
-  //     return;
-  //   }
-  //
-  //   if (visitors.isEmpty) {
-  //     await _showAlert('No visitors to send email.');
-  //     return;
-  //   }
-  //
-  //   try {
-  //     setState(() {
-  //       isLoading = true; // Show the central loader
-  //     });
-  //
-  //     final csvPath = await exportVisitorsToCSV();
-  //     final zipPath = await createPhotosZip();
-  //
-  //     final today = DateTime.now();
-  //     final formattedDate =
-  //         "${today.day}-${today.month.toString().padLeft(2, '0')}-${today.year}";
-  //
-  //     final smtpServer = gmail(smtpEmail, smtpAppPassword);
-  //
-  //     final message = Message()
-  //       ..from = Address(smtpEmail, 'Visitor Management System')
-  //       ..recipients.add(globalMailConfig.toMail) // TODO: replace with recipient //'hwttech@hwtpl.com'
-  //       ..subject = 'Visitor List - $formattedDate'
-  //       ..text =
-  //           'Hello,\n\nPlease find attached the visitor report for today ($formattedDate).\n\nRegards,\nVisitor Management System'
-  //       ..attachments = [
-  //         FileAttachment(File(csvPath))..fileName = 'visitors_$formattedDate.csv',
-  //         FileAttachment(File(zipPath))..fileName = 'visitor_photos_$formattedDate.zip',
-  //       ];
-  //
-  //     // Send email
-  //     await send(message, smtpServer);
-  //
-  //     // Delete visitors immediately after sending
-  //     await DBHelper.instance.deleteAllVisitors();
-  //     await fetchVisitors();
-  //
-  //     // Small delay so loader is visible
-  //     await Future.delayed(const Duration(milliseconds: 500));
-  //
-  //     setState(() {
-  //       isLoading = false; // Hide loader before showing alert
-  //     });
-  //
-  //     await _showAlert('Email sent successfully', popPage: true);
-  //
-  //   } on MailerException catch (e) {
-  //     setState(() => isLoading = false);
-  //     await _showAlert('Failed to send email: ${e.message}');
-  //     for (var p in e.problems) {
-  //       print('Problem: ${p.code}: ${p.msg}');
-  //     }
-  //   } catch (e) {
-  //     setState(() => isLoading = false);
-  //     await _showAlert('Unexpected error: $e');
-  //   }
-  // }
-
-  Future<void> sendEmail() async {
-    if (globalMailConfig.fromMail.isEmpty ||
-        globalMailConfig.toMail.isEmpty ||
-        globalMailConfig.appPassword.isEmpty) {
-      await _showAlert(
-        'Mail is not configured properly. '
-            'Please check sender email, recipient email, and app password.',
-      );
-      return;
-    }
-
-    if (visitors.isEmpty) {
-      await _showAlert('No visitors to send email.');
-      return;
-    }
-
-    try {
-      setState(() {
-        isLoading = true; // show loader
-      });
-
-      // 1️⃣ Export CSV
-      final csvPath = await exportVisitorsToCSV();
-
-      // 2️⃣ Create zip with all visitor + ID photos
-      // final zipPath = await createPhotosZip(); // using your fixed createPhotosZip()
-
-      final pdfPath = await createVisitorPhotosPDF();
-
-      // 3️⃣ Prepare email
-      final today = DateTime.now();
-      final formattedDate =
-          "${today.day}-${today.month.toString().padLeft(2, '0')}-${today.year}";
-
-      final smtpServer = gmail(globalMailConfig.fromMail, globalMailConfig.appPassword);
-
-      final message = Message()
-        ..from = Address(globalMailConfig.fromMail, 'Visitor Management System')
-        ..recipients.add(globalMailConfig.toMail)
-        ..subject = 'Visitor List - $formattedDate'
-        ..text =
-            'Hello,\n\nPlease find attached the visitor report and photos for today ($formattedDate).\n\nRegards,\nVisitor Management System'
-        ..attachments = [
-          FileAttachment(File(csvPath))..fileName = 'visitors_$formattedDate.csv',
-          // FileAttachment(File(zipPath))..fileName = 'visitor_photos_$formattedDate.zip',
-          FileAttachment(File(pdfPath))..fileName = 'visitor_photos_$formattedDate.pdf',
-        ];
-
-      // 4️⃣ Send email
-      await send(message, smtpServer);
-
-      // 5️⃣ Clean up DB
-      await DBHelper.instance.deleteAllVisitors();
-      await fetchVisitors();
-
-      // brief delay so loader is visible
-      await Future.delayed(const Duration(milliseconds: 500));
-
-      setState(() {
-        isLoading = false; // hide loader
-      });
-
-      await _showAlert('Email sent successfully', popPage: true);
-
-    } on MailerException catch (e) {
-      setState(() => isLoading = false);
-      await _showAlert('Failed to send email: ${e.message}');
-      for (var p in e.problems) {
-        print('Problem: ${p.code}: ${p.msg}');
+        progress++;
+        setState(() {});
       }
-    } catch (e) {
-      setState(() => isLoading = false);
-      await _showAlert('Unexpected error: $e');
-      print("Error ${e}");
+
+      allWidgets.add(
+        pw.Table.fromTextArray(
+          headers: headers,
+          data: dataRows,
+          border: pw.TableBorder.all(width: 0.5),
+          headerStyle: pw.TextStyle(
+            fontWeight: pw.FontWeight.bold,
+            color: PdfColors.white,
+          ),
+          headerDecoration: pw.BoxDecoration(color: PdfColors.blue300),
+          cellAlignment: pw.Alignment.centerLeft,
+          cellPadding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+          columnWidths: {
+            0: const pw.FixedColumnWidth(30), // Sr No
+            1: const pw.FixedColumnWidth(80), // Name
+            // Rest can auto
+          },
+        ),
+      );
     }
-  }
 
-
-
-  Future<void> _showAlert(String message, {bool popPage = false}) {
-    return showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        content: Text(message),
-        actions: [
-          TextButton(
-            child: const Text('OK'),
-            onPressed: () {
-              if (popPage) {
-                visitorsUpdated.value = true; // notify history page
-                Navigator.pop(context, true); // close page
-              } else {
-                Navigator.pop(context); // just close dialog
-              }
-            },
-          )
-        ],
+    pdf.addPage(
+      pw.MultiPage(
+        build: (context) => allWidgets,
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.all(12),
       ),
     );
+
+    final path = '${dir.path}/visitor_report.pdf';
+    await File(path).writeAsBytes(await pdf.save());
+
+    return path;
   }
 
+  Future<void> generateAndShare() async {
+    setState(() => isLoading = true);
+
+    final pdf = await createPDF();
+
+    setState(() => isLoading = false);
+
+    if (pdf != null) {
+      await Share.shareXFiles(
+        [
+          XFile(pdf, mimeType: 'application/pdf'),
+        ],
+        text: 'Visitor Report',
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    final isReadyToShare = hasSearched && visitors.isNotEmpty;
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Send Mail'),
+        title: const Text('Visitor Reports'),
         centerTitle: true,
         backgroundColor: kPrimaryColor,
       ),
-      // body: isLoading
-      //     ? const Center(child: CircularProgressIndicator())
-      //     : Column(
-      //   children: [
-      //     Padding(
-      //       padding: const EdgeInsets.all(16.0),
-      //       child: SizedBox(
-      //         width: double.infinity,
-      //         child: ElevatedButton.icon(
-      //           icon: const Icon(Icons.mail),
-      //           label: const Text(
-      //             'Send Mail',
-      //             style: TextStyle(
-      //                 fontSize: 18, fontWeight: FontWeight.bold),
-      //           ),
-      //           onPressed: sendEmail,
-      //           style: ElevatedButton.styleFrom(
-      //             backgroundColor: kPrimaryColorLight,
-      //             foregroundColor: Colors.black,
-      //             padding: const EdgeInsets.symmetric(vertical: 16),
-      //             shape: RoundedRectangleBorder(
-      //               borderRadius: BorderRadius.circular(20),
-      //             ),
-      //             elevation: 3,
-      //           ),
-      //         ),
-      //       ),
-      //     ),
-      //     Expanded(
-      //       child: visitors.isEmpty
-      //           ? const Center(
-      //         child: Text(
-      //           'No visitors found.',
-      //           style: TextStyle(
-      //               fontSize: 18,
-      //               fontWeight: FontWeight.bold,
-      //               color: Colors.black),
-      //         ),
-      //       )
-      //           : ListView.builder(
-      //         itemCount: visitors.length,
-      //         itemBuilder: (context, index) {
-      //           final visitor = visitors[index];
-      //           return Card(
-      //             margin: const EdgeInsets.symmetric(
-      //                 horizontal: 16, vertical: 8),
-      //             shape: RoundedRectangleBorder(
-      //                 borderRadius: BorderRadius.circular(20)),
-      //             elevation: 3,
-      //             child: ListTile(
-      //               leading: visitor['visitor_photo_path'] != null &&
-      //                   visitor['visitor_photo_path'] != 'null'
-      //                   ? CircleAvatar(
-      //                 backgroundImage: FileImage(
-      //                     File(visitor['visitor_photo_path'])),
-      //                 radius: 25,
-      //               )
-      //                   : const CircleAvatar(
-      //                 child: Icon(Icons.person),
-      //                 radius: 25,
-      //               ),
-      //               title: Text(visitor['name'] ?? 'No Name'),
-      //               subtitle:
-      //               Text(visitor['company'] ?? 'No Company'),
-      //             ),
-      //           );
-      //         },
-      //       ),
-      //     ),
-      //   ],
-      // ),
       body: Stack(
         children: [
           Column(
             children: [
+              // DATE PICKERS
               Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    icon: const Icon(Icons.mail),
-                    label: const Text(
-                      'Send Mail',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                    ),
-                    onPressed: sendEmail,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: kPrimaryColorLight,
-                      foregroundColor: Colors.black,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(20),
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: InkWell(
+                        onTap: _pickFromDate,
+                        child: InputDecorator(
+                          decoration: const InputDecoration(
+                            labelText: 'From Date',
+                            border: OutlineInputBorder(),
+                          ),
+                          child: Text(_formatter.format(_fromDate!)),
+                        ),
                       ),
-                      elevation: 3,
                     ),
-                  ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: InkWell(
+                        onTap: _pickToDate,
+                        child: InputDecorator(
+                          decoration: const InputDecoration(
+                            labelText: 'To Date',
+                            border: OutlineInputBorder(),
+                          ),
+                          child: Text(_formatter.format(_toDate!)),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
+
+
+              // Padding(
+              //   padding: const EdgeInsets.symmetric(horizontal: 16),
+              //   child: hasSearched && visitors.isNotEmpty
+              //       ? Row(
+              //     children: [
+              //       Expanded(
+              //         child: ElevatedButton(
+              //           style: ElevatedButton.styleFrom(
+              //             backgroundColor: kPrimaryColor,
+              //             padding: const EdgeInsets.symmetric(vertical: 14),
+              //             shape: RoundedRectangleBorder(
+              //               borderRadius: BorderRadius.circular(10),
+              //             ),
+              //           ),
+              //           onPressed: () => handleMainButton(withImages: true), // ✅ FIX
+              //           child: const Text(
+              //             'Share With Images',
+              //             style: TextStyle(color: Colors.white),
+              //           ),
+              //         ),
+              //       ),
+              //       const SizedBox(width: 12),
+              //       Expanded(
+              //         child: ElevatedButton(
+              //           style: ElevatedButton.styleFrom(
+              //             backgroundColor: kPrimaryColor,
+              //             padding: const EdgeInsets.symmetric(vertical: 14),
+              //             shape: RoundedRectangleBorder(
+              //               borderRadius: BorderRadius.circular(10),
+              //             ),
+              //           ),
+              //           onPressed: () => handleMainButton(withImages: false), // ✅ FIX
+              //           child: const Text(
+              //             'Share Without Images',
+              //             style: TextStyle(color: Colors.white),
+              //           ),
+              //         ),
+              //       ),
+              //     ],
+              //   )
+              //       : SizedBox(
+              //     width: double.infinity,
+              //     child: ElevatedButton(
+              //       style: ElevatedButton.styleFrom(
+              //         backgroundColor: kPrimaryColor,
+              //         padding: const EdgeInsets.symmetric(vertical: 14),
+              //         shape: RoundedRectangleBorder(
+              //           borderRadius: BorderRadius.circular(10),
+              //         ),
+              //       ),
+              //       onPressed: () => handleMainButton(), // ✅ FIX (no param)
+              //       child: const Text(
+              //         'Search',
+              //         style: TextStyle(color: Colors.white),
+              //       ),
+              //     ),
+              //   ),
+              // ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Column(
+                  children: [
+                    // ✅ ALWAYS VISIBLE SEARCH BUTTON
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: kPrimaryColor,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                        onPressed: () => handleMainButton(), // search
+                        child: const Text(
+                          'Search',
+                          style: TextStyle(color: Colors.white),
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 10),
+
+                    // ✅ SHOW SHARE BUTTONS ONLY AFTER SEARCH
+                    if (hasSearched && visitors.isNotEmpty)
+                      Row(
+                        children: [
+                          Expanded(
+                            child: ElevatedButton(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: kPrimaryColor,
+                                padding: const EdgeInsets.symmetric(vertical: 14),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                              ),
+                              onPressed: () => handleMainButton(withImages: true),
+                              child: const Text(
+                                'Share With Images',
+                                style: TextStyle(color: Colors.white),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: ElevatedButton(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: kPrimaryColor,
+                                padding: const EdgeInsets.symmetric(vertical: 14),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                              ),
+                              onPressed: () => handleMainButton(withImages: false),
+                              child: const Text(
+                                'Share Without Images',
+                                style: TextStyle(color: Colors.white),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 10),
+
+              // LIST
               Expanded(
-                child: visitors.isEmpty
-                    ? const Center(
-                  child: Text(
-                    'No visitors found.',
-                    style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.black),
-                  ),
-                )
+                child: !hasSearched
+                    ? const Center(child: Text('Select date and press Search'))
+                    : visitors.isEmpty
+                    ? const Center(child: Text('No data found'))
                     : ListView.builder(
                   itemCount: visitors.length,
-                  itemBuilder: (context, index) {
-                    final visitor = visitors[index];
+                  itemBuilder: (_, index) {
+                    final item = visitors[index];
+                    final imagePath = item['visitor_photo_path'] ?? '';
+
                     return Card(
-                      margin: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 8),
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(20)),
-                      elevation: 3,
+                      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                       child: ListTile(
-                        leading: visitor['visitor_photo_path'] != null &&
-                            visitor['visitor_photo_path'] != 'null'
-                            ? CircleAvatar(
-                          backgroundImage:
-                          FileImage(File(visitor['visitor_photo_path'])),
-                          radius: 25,
-                        )
-                            : const CircleAvatar(
-                          child: Icon(Icons.person),
-                          radius: 25,
+                        leading: imagePath.isNotEmpty && File(imagePath).existsSync()
+                            ? Image.file(File(imagePath), width: 50, fit: BoxFit.cover)
+                            : const Icon(Icons.person),
+                        title: Text(item['name'] ?? ''),
+                        subtitle: Text(
+                          '${item['company'] ?? 'No Company'}\nResident: ${item['meeting_person']}\nMobile Number: ${item['mobile'] ?? 'N/A'}\nPurpose: ${item['purpose'] ?? 'N/A'}'
+                              '\nDate: ${item['in_date'] ?? 'N/A'} In Time: ${item['in_time'] ?? ''} '
+                              '\nOut Time: ${item['out_time']}',
+                          style: const TextStyle(
+                            color: Colors.black,
+                          ),
                         ),
-                        title: Text(visitor['name'] ?? 'No Name'),
-                        subtitle: Text(visitor['company'] ?? 'No Company'),
                       ),
                     );
                   },
@@ -684,15 +931,29 @@ class _SendMailPageState extends State<SendMailPage> {
             ],
           ),
 
-          // Centered loader overlay
+          // if (isLoading)
+          //   Container(
+          //     color: Colors.black26,
+          //     child: const Center(child: CircularProgressIndicator()),
+          //   ),
+
           if (isLoading)
             Container(
-              color: Colors.black.withOpacity(0.3),
-              alignment: Alignment.center,
-              child: const SizedBox(
-                width: 80,
-                height: 80,
-                child: CircularProgressIndicator(strokeWidth: 6),
+              color: Colors.black26,
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const CircularProgressIndicator(),
+                    const SizedBox(height: 12),
+                    Text(
+                      total == 0
+                          ? 'Preparing...'
+                          : 'Generating $progress / $total',
+                      style: const TextStyle(color: Colors.white),
+                    ),
+                  ],
+                ),
               ),
             ),
         ],

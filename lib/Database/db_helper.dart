@@ -1,5 +1,6 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
+import 'package:intl/intl.dart';
 
 class DBHelper {
   static final DBHelper instance = DBHelper._internal();
@@ -223,6 +224,64 @@ class DBHelper {
         },
       );
     }
+  }
+
+  Future<Map<String, dynamic>?> getLatestVisitorByPhone(String phoneNumber) async {
+    final db = await database;
+
+    final result = await db.query(
+      'visitors',
+      where: 'mobile = ?',
+      whereArgs: [phoneNumber],
+      orderBy: 'id DESC',
+      limit: 1,
+    );
+
+    if (result.isNotEmpty) {
+      return result.first;
+    }
+    return null;
+  }
+
+
+
+  Future<List<Map<String, dynamic>>> getVisitorsBetweenDates(
+      DateTime fromDate, DateTime toDate) async {
+    final db = await database;
+
+    final String from = DateFormat('yyyy-MM-dd').format(fromDate);
+    final String to = DateFormat('yyyy-MM-dd').format(toDate);
+
+    return await db.query(
+      'visitors',
+      where: '''
+      (substr(in_date, 7, 4) || '-' || substr(in_date, 4, 2) || '-' || substr(in_date, 1, 2))
+      BETWEEN ? AND ?
+    ''',
+      whereArgs: [from, to],
+      orderBy: 'in_date ASC',
+    );
+  }
+
+
+  Future<int> deleteVisitorsBetweenDates(DateTime fromDate, DateTime toDate) async {
+    final db = await database;
+
+    // Convert fromDate and toDate to yyyy-MM-dd format for comparison
+    final from = DateFormat('yyyy-MM-dd').format(fromDate);
+    final to = DateFormat('yyyy-MM-dd').format(toDate);
+
+    // Use SQLite substring to convert stored dd/MM/yyyy -> yyyy-MM-dd for comparison
+    final count = await db.delete(
+      'visitors',
+      where: '''
+      (substr(in_date, 7, 4) || '-' || substr(in_date, 4, 2) || '-' || substr(in_date, 1, 2)) 
+      BETWEEN ? AND ?
+    ''',
+      whereArgs: [from, to],
+    );
+
+    return count;
   }
 
 

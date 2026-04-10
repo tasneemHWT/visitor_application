@@ -8,8 +8,6 @@ import 'package:path_provider/path_provider.dart';
 import '../Database/db_helper.dart';
 import 'package:visitor_application/constants.dart';
 
-// PURPLE THEME COLORS
-
 
 class VisitorForm extends StatefulWidget {
   const VisitorForm({super.key});
@@ -38,6 +36,7 @@ class _VisitorFormState extends State<VisitorForm> {
   final _vehicleController = TextEditingController();
   final _purposeController = TextEditingController();
   final _dateController = TextEditingController();
+  final _companyController = TextEditingController();
 
   // Dropdowns
   String? _selectedCompany;
@@ -89,6 +88,7 @@ class _VisitorFormState extends State<VisitorForm> {
     _vehicleController.dispose();
     _purposeController.dispose();
     _dateController.dispose();
+    _companyController.dispose();
     super.dispose();
   }
 
@@ -310,6 +310,43 @@ class _VisitorFormState extends State<VisitorForm> {
     }
   }
 
+  Future<void> _checkAndAutoFill(String phone) async {
+    if (phone.length != 10) return;
+
+    final visitor =
+    await DBHelper.instance.getLatestVisitorByPhone(phone);
+    if (visitor != null) {
+      setState(() {
+        _nameController.text = visitor['name'] ?? '';
+        _emailController.text = visitor['email'] ?? '';
+        _addressController.text = visitor['address'] ?? '';
+        _vehicleController.text = visitor['vehicle'] ?? '';
+        _selectedCompany = visitor['company'];
+        _companyController.text = visitor['company'] ?? '';
+        _selectedIdProof = visitor['id_proof'];
+        _idNumberController.text = visitor['id_number'] ?? '';
+
+        /// ✅ Restore Visitor Photo
+        final visitorPhotoPath = visitor['visitor_photo_path'];
+        if (visitorPhotoPath != null && visitorPhotoPath.isNotEmpty) {
+          _visitorPhoto = File(visitorPhotoPath);
+        }
+
+        /// ✅ Restore ID Photos
+        _idPhotos.clear();
+        final idPhotoPaths = visitor['id_photo_path'];
+        if (idPhotoPaths != null && idPhotoPaths.isNotEmpty) {
+          final paths = idPhotoPaths.split(',');
+          for (var path in paths) {
+            _idPhotos.add(File(path));
+          }
+        }
+      });
+
+      await _showAlert("Visitor Found", "Details auto-filled from previous visit.");
+    }
+  }
+
   Widget _buildTextField({
     required TextEditingController controller,
     required String label,
@@ -386,20 +423,65 @@ class _VisitorFormState extends State<VisitorForm> {
               ),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(20),
-                child: _idPhotos.length > i
-                    ? Image.file(
-                  _idPhotos[i],
-                  fit: BoxFit.cover,
-                  width: double.infinity,
-                  height: double.infinity,
-                )
-                    : Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.photo, color: Colors.black, size: 40),
-                  ],
+            child: _idPhotos.length > i
+                ? Stack(
+              children: [
+                Positioned.fill(
+                  child: Image.file(
+                    _idPhotos[i],
+                    fit: BoxFit.cover,
+                  ),
                 ),
-              ),
+
+                /// ❌ REMOVE BUTTON
+                Positioned(
+                  top: 6,
+                  right: 6,
+                  child: GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        _idPhotos.removeAt(i);
+                      });
+                    },
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.6),
+                        shape: BoxShape.circle,
+                      ),
+                      padding: const EdgeInsets.all(6),
+                      child: const Icon(
+                        Icons.close,
+                        size: 18,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            )
+                : Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.photo, color: Colors.black, size: 40),
+              ],
+            ),
+          ),
+              // child: ClipRRect(
+              //   borderRadius: BorderRadius.circular(20),
+              //   child: _idPhotos.length > i
+              //       ? Image.file(
+              //     _idPhotos[i],
+              //     fit: BoxFit.cover,
+              //     width: double.infinity,
+              //     height: double.infinity,
+              //   )
+              //       : Column(
+              //     mainAxisAlignment: MainAxisAlignment.center,
+              //     children: [
+              //       Icon(Icons.photo, color: Colors.black, size: 40),
+              //     ],
+              //   ),
+              // ),
             ),
           ),
         const SizedBox(width: 12),
@@ -487,6 +569,34 @@ class _VisitorFormState extends State<VisitorForm> {
                   child: Column(
                     children: [
 
+                      /// MOBILE NUMBER
+                      // _buildTextField(
+                      //   controller: _mobileController,
+                      //   label: 'Mobile Number',
+                      //   icon: Icons.phone,
+                      //   keyboardType: TextInputType.phone,
+                      //   validator: (v) => v == null || v.length != 10 ? 'Enter valid number' : null,
+                      //   required: true,
+                      // ),
+
+                      _buildTextField(
+                        controller: _mobileController,
+                        label: 'Mobile Number',
+                        icon: Icons.phone,
+                        keyboardType: TextInputType.phone,
+                        validator: (v) =>
+                        v == null || v.length != 10 ? 'Enter valid number' : null,
+                        required: true,
+                        liveValidator: (value) {
+                          if (value.length == 10) {
+                            _checkAndAutoFill(value);
+                          }
+                          return null;
+                        },
+                      ),
+
+                      const SizedBox(height: 12),
+
                       /// SEARCHABLE MEETING PERSON FIELD - NOW ABOVE NAME
                       _loadingMeetingPersons
                           ? const CircularProgressIndicator()
@@ -509,7 +619,7 @@ class _VisitorFormState extends State<VisitorForm> {
                             decoration: InputDecoration(
                               label: RichText(
                                 text: TextSpan(
-                                  text: 'Meeting with member',
+                                  text: 'Resident',
                                   style: TextStyle(color: Colors.grey[700]),
                                   children: const [
                                     TextSpan(text: ' *', style: TextStyle(color: Colors.red)),
@@ -558,17 +668,6 @@ class _VisitorFormState extends State<VisitorForm> {
 
                       const SizedBox(height: 12),
 
-                      /// MOBILE NUMBER
-                      _buildTextField(
-                        controller: _mobileController,
-                        label: 'Mobile Number',
-                        icon: Icons.phone,
-                        keyboardType: TextInputType.phone,
-                        validator: (v) => v == null || v.length != 10 ? 'Enter valid number' : null,
-                        required: true,
-                      ),
-
-                      const SizedBox(height: 12),
 
                       /// EMAIL
                       _buildTextField(
@@ -585,7 +684,8 @@ class _VisitorFormState extends State<VisitorForm> {
                           Expanded(
                             child: _loadingCompanies
                                 ? const CircularProgressIndicator()
-                                : Autocomplete<String>(
+                                :Autocomplete<String>(
+                              initialValue: TextEditingValue(text: _companyController.text),
                               optionsBuilder: (TextEditingValue textEditingValue) {
                                 if (textEditingValue.text.isEmpty) {
                                   return const Iterable<String>.empty();
@@ -597,13 +697,21 @@ class _VisitorFormState extends State<VisitorForm> {
                                 });
                               },
                               onSelected: (String selection) {
-                                setState(() => _selectedCompany = selection);
+                                setState(() {
+                                  _selectedCompany = selection;
+                                  _companyController.text = selection;
+                                });
                               },
                               fieldViewBuilder:
                                   (context, textController, focusNode, onFieldSubmitted) {
+
                                 return TextFormField(
-                                  controller: textController,
+                                  controller: _companyController,   // ✅ use your controller
                                   focusNode: focusNode,
+                                  onChanged: (value) {
+                                    textController.value = _companyController.value;
+                                    // 🔥 This keeps Autocomplete in sync
+                                  },
                                   decoration: InputDecoration(
                                     label: RichText(
                                       text: TextSpan(
@@ -617,21 +725,71 @@ class _VisitorFormState extends State<VisitorForm> {
                                     prefixIcon: Icon(Icons.business, color: kPrimaryColor),
                                     filled: true,
                                     fillColor: kBackgroundColor,
-                                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(25)),
+                                    border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(25)),
                                     suffixIcon: _selectedCompany != null
                                         ? IconButton(
                                       icon: const Icon(Icons.clear),
                                       onPressed: () {
-                                        textController.clear();
+                                        _companyController.clear();
+                                        textController.clear(); // 🔥 keep both in sync
                                         setState(() => _selectedCompany = null);
                                       },
                                     )
                                         : null,
                                   ),
-                                  validator: (v) => _selectedCompany == null ? 'Select company' : null,
+                                  validator: (v) =>
+                                  _selectedCompany == null ? 'Select company' : null,
                                 );
-                                },
+                              },
                             ),
+                            //     : Autocomplete<String>(
+                            //   optionsBuilder: (TextEditingValue textEditingValue) {
+                            //     if (textEditingValue.text.isEmpty) {
+                            //       return const Iterable<String>.empty();
+                            //     }
+                            //     return _companyNames.where((String option) {
+                            //       return option
+                            //           .toLowerCase()
+                            //           .contains(textEditingValue.text.toLowerCase());
+                            //     });
+                            //   },
+                            //   onSelected: (String selection) {
+                            //     setState(() => _selectedCompany = selection);
+                            //   },
+                            //   fieldViewBuilder:
+                            //       (context, textController, focusNode, onFieldSubmitted) {
+                            //     return TextFormField(
+                            //       controller: textController,
+                            //       focusNode: focusNode,
+                            //       decoration: InputDecoration(
+                            //         label: RichText(
+                            //           text: TextSpan(
+                            //             text: 'Company',
+                            //             style: TextStyle(color: Colors.grey[700]),
+                            //             children: const [
+                            //               TextSpan(text: ' *', style: TextStyle(color: Colors.red)),
+                            //             ],
+                            //           ),
+                            //         ),
+                            //         prefixIcon: Icon(Icons.business, color: kPrimaryColor),
+                            //         filled: true,
+                            //         fillColor: kBackgroundColor,
+                            //         border: OutlineInputBorder(borderRadius: BorderRadius.circular(25)),
+                            //         suffixIcon: _selectedCompany != null
+                            //             ? IconButton(
+                            //           icon: const Icon(Icons.clear),
+                            //           onPressed: () {
+                            //             textController.clear();
+                            //             setState(() => _selectedCompany = null);
+                            //           },
+                            //         )
+                            //             : null,
+                            //       ),
+                            //       validator: (v) => _selectedCompany == null ? 'Select company' : null,
+                            //     );
+                            //     },
+                            // ),
                           ),
                           const SizedBox(width: 8),
                           ElevatedButton(
@@ -675,6 +833,85 @@ class _VisitorFormState extends State<VisitorForm> {
               const SizedBox(height: 16),
 
               // ID DETAILS
+              // Card(
+              //   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              //   elevation: 3,
+              //   child: ExpansionTile(
+              //     initiallyExpanded: true,
+              //     title: const Text('Visitor ID Details'),
+              //     leading: Icon(Icons.badge, color: kPrimaryColor),
+              //     childrenPadding: const EdgeInsets.all(16),
+              //     children: [
+              //       _buildDropdown(
+              //         value: _selectedIdProof,
+              //         label: 'ID Proof',
+              //         items: ['Pancard', 'Adhar card', 'Company ID', 'Driving License','N/A'],
+              //         onChanged: (v) => setState(() => _selectedIdProof = v),
+              //         validator: (v) => v == null ? 'Select ID proof' : null,
+              //       ),
+              //       const SizedBox(height: 12),
+              //       _buildTextField(
+              //         controller: _idNumberController,
+              //         label: 'ID Number',
+              //         inputFormatters: [  LengthLimitingTextInputFormatter(16), ],
+              //         validator: (value) {
+              //           if (_selectedIdProof == null) return 'Select ID proof first';
+              //           if (value == null || value.isEmpty) return 'Enter ID number';
+              //
+              //           switch (_selectedIdProof) {
+              //             case 'Pancard':
+              //               if (!RegExp(r'^[A-Z]{5}[0-9]{4}[A-Z]$').hasMatch(value.toUpperCase())) {
+              //                 return 'PAN must be 5 letters, 4 digits, 1 letter (e.g., ABCDE1234F)';
+              //               }
+              //               break;
+              //             case 'Adhar card':
+              //               if (!RegExp(r'^[0-9]{12}$').hasMatch(value)) {
+              //                 return 'Aadhaar must be 12 digits';
+              //               }
+              //               break;
+              //             case 'Driving License':
+              //               if (!RegExp(r'^[A-Za-z0-9]{16}$').hasMatch(value)) {
+              //                 return 'Driving License must be 16 characters (letters and numbers)';
+              //               }
+              //               break;
+              //             default:
+              //               return null;
+              //           }
+              //           return null; // valid
+              //         },
+              //         liveValidator: (value) {
+              //           if (_selectedIdProof == null) return 'Select ID proof first';
+              //           if (value.isEmpty) return 'Enter ID number';
+              //
+              //           switch (_selectedIdProof) {
+              //             case 'Pancard':
+              //               if (!RegExp(r'^[A-Z]{5}[0-9]{4}[A-Z]$').hasMatch(value.toUpperCase())) {
+              //                 return 'PAN must be 5 letters, 4 digits, 1 letter (e.g., ABCDE1234F)';
+              //               }
+              //               break;
+              //             case 'Adhar card':
+              //               if (!RegExp(r'^[0-9]{12}$').hasMatch(value)) {
+              //                 return 'Aadhaar must be 12 digits';
+              //               }
+              //               break;
+              //             case 'Driving License':
+              //               if (!RegExp(r'^[A-Za-z0-9]{16}$').hasMatch(value)) {
+              //                 return 'Driving License must be 16 characters (letters and numbers)';
+              //               }
+              //               break;
+              //             default:
+              //               return null;
+              //           }
+              //           return null; // valid
+              //         },
+              //         required: true,
+              //       ),
+              //       const SizedBox(height: 12),
+              //       _buildIdPhotoRow(),
+              //     ],
+              //   ),
+              // ),
+
               Card(
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                 elevation: 3,
@@ -684,72 +921,79 @@ class _VisitorFormState extends State<VisitorForm> {
                   leading: Icon(Icons.badge, color: kPrimaryColor),
                   childrenPadding: const EdgeInsets.all(16),
                   children: [
+                    // ID Proof Dropdown
                     _buildDropdown(
                       value: _selectedIdProof,
                       label: 'ID Proof',
-                      items: ['Pancard', 'Adhar card', 'Company ID', 'Driving License'],
+                      items: ['Pancard', 'Adhar card', 'Company ID', 'Driving License', 'N/A'],
                       onChanged: (v) => setState(() => _selectedIdProof = v),
                       validator: (v) => v == null ? 'Select ID proof' : null,
                     ),
-                    const SizedBox(height: 12),
-                    _buildTextField(
-                      controller: _idNumberController,
-                      label: 'ID Number',
-                      inputFormatters: [  LengthLimitingTextInputFormatter(16), ],
-                      validator: (value) {
-                        if (_selectedIdProof == null) return 'Select ID proof first';
-                        if (value == null || value.isEmpty) return 'Enter ID number';
 
-                        switch (_selectedIdProof) {
-                          case 'Pancard':
-                            if (!RegExp(r'^[A-Z]{5}[0-9]{4}[A-Z]$').hasMatch(value.toUpperCase())) {
-                              return 'PAN must be 5 letters, 4 digits, 1 letter (e.g., ABCDE1234F)';
-                            }
-                            break;
-                          case 'Adhar card':
-                            if (!RegExp(r'^[0-9]{12}$').hasMatch(value)) {
-                              return 'Aadhaar must be 12 digits';
-                            }
-                            break;
-                          case 'Driving License':
-                            if (!RegExp(r'^[A-Za-z0-9]{16}$').hasMatch(value)) {
-                              return 'Driving License must be 16 characters (letters and numbers)';
-                            }
-                            break;
-                          default:
-                            return null;
-                        }
-                        return null; // valid
-                      },
-                      liveValidator: (value) {
-                        if (_selectedIdProof == null) return 'Select ID proof first';
-                        if (value.isEmpty) return 'Enter ID number';
-
-                        switch (_selectedIdProof) {
-                          case 'Pancard':
-                            if (!RegExp(r'^[A-Z]{5}[0-9]{4}[A-Z]$').hasMatch(value.toUpperCase())) {
-                              return 'PAN must be 5 letters, 4 digits, 1 letter (e.g., ABCDE1234F)';
-                            }
-                            break;
-                          case 'Adhar card':
-                            if (!RegExp(r'^[0-9]{12}$').hasMatch(value)) {
-                              return 'Aadhaar must be 12 digits';
-                            }
-                            break;
-                          case 'Driving License':
-                            if (!RegExp(r'^[A-Za-z0-9]{16}$').hasMatch(value)) {
-                              return 'Driving License must be 16 characters (letters and numbers)';
-                            }
-                            break;
-                          default:
-                            return null;
-                        }
-                        return null; // valid
-                      },
-                      required: true,
-                    ),
                     const SizedBox(height: 12),
-                    _buildIdPhotoRow(),
+
+                    // Only show ID number & photos if ID Proof is not 'N/A'
+                    if (_selectedIdProof != 'N/A') ...[
+                      _buildTextField(
+                        controller: _idNumberController,
+                        label: 'ID Number',
+                        inputFormatters: [LengthLimitingTextInputFormatter(16)],
+                        validator: (value) {
+                          if (_selectedIdProof == null || _selectedIdProof == 'N/A') return null; // skip validation
+                          if (value == null || value.isEmpty) return 'Enter ID number';
+                          switch (_selectedIdProof) {
+                            case 'Pancard':
+                              if (!RegExp(r'^[A-Z]{5}[0-9]{4}[A-Z]$').hasMatch(value.toUpperCase())) {
+                                return 'PAN must be 5 letters, 4 digits, 1 letter (e.g., ABCDE1234F)';
+                              }
+                              break;
+                            case 'Adhar card':
+                              if (!RegExp(r'^[0-9]{12}$').hasMatch(value)) {
+                                return 'Aadhaar must be 12 digits';
+                              }
+                              break;
+                            case 'Driving License':
+                              if (!RegExp(r'^[A-Za-z0-9]{16}$').hasMatch(value)) {
+                                return 'Driving License must be 16 characters (letters and numbers)';
+                              }
+                              break;
+                            default:
+                              return null;
+                          }
+                          return null;
+                        },
+                        liveValidator: (value) {
+                          if (_selectedIdProof == null || _selectedIdProof == 'N/A') return null;
+                          if (value.isEmpty) return 'Enter ID number';
+                          switch (_selectedIdProof) {
+                            case 'Pancard':
+                              if (!RegExp(r'^[A-Z]{5}[0-9]{4}[A-Z]$').hasMatch(value.toUpperCase())) {
+                                return 'PAN must be 5 letters, 4 digits, 1 letter (e.g., ABCDE1234F)';
+                              }
+                              break;
+                            case 'Adhar card':
+                              if (!RegExp(r'^[0-9]{12}$').hasMatch(value)) {
+                                return 'Aadhaar must be 12 digits';
+                              }
+                              break;
+                            case 'Driving License':
+                              if (!RegExp(r'^[A-Za-z0-9]{16}$').hasMatch(value)) {
+                                return 'Driving License must be 16 characters (letters and numbers)';
+                              }
+                              break;
+                            default:
+                              return null;
+                          }
+                          return null;
+                        },
+                        required: true,
+                      ),
+
+                      const SizedBox(height: 12),
+
+                      // ID Photos
+                      _buildIdPhotoRow(),
+                    ],
                   ],
                 ),
               ),
@@ -867,7 +1111,7 @@ class _VisitorFormState extends State<VisitorForm> {
         fillColor: kBackgroundColor,
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(25)),
       ),
-      items: ['Pancard', 'Adhar card', 'Company ID', 'Driving License']
+      items: ['Pancard', 'Adhar card', 'Company ID', 'Driving License','N/A']
           .map((e) => DropdownMenuItem(value: e, child: Text(e)))
           .toList(),
       onChanged: (v) => setState(() => _selectedIdProof = v),
@@ -883,7 +1127,7 @@ class _VisitorFormState extends State<VisitorForm> {
       return;
     }
 
-    if (_idPhotos.isEmpty) {
+    if (_selectedIdProof != 'N/A' && _idPhotos.isEmpty) {
       await _showAlert('Missing ID Photo', 'At least one ID photo is required');
       return;
     }
@@ -999,7 +1243,11 @@ class _VisitorFormState extends State<VisitorForm> {
                 // Reload companies
                 await _loadCompanies();
 
-                setState(() => _selectedCompany = name);
+                // setState(() => _selectedCompany = name);
+                setState(() {
+                  _selectedCompany = name;
+                  _companyController.text = name;
+                });
 
                 Navigator.pop(context);
               },

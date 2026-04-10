@@ -49,12 +49,70 @@ class _VisitorHistoryPageState extends State<VisitorHistoryPage> {
     _loadHistoryVisitors();
   }
 
+  // Future<void> _loadHistoryVisitors() async {
+  //   final data = await DBHelper.instance.getHistoryVisitors();
+  //
+  //   if (!mounted) return;
+  //   setState(() {
+  //     _visitors = data;
+  //   });
+  // }
+
   Future<void> _loadHistoryVisitors() async {
     final data = await DBHelper.instance.getHistoryVisitors();
-    if (!mounted) return;
-    setState(() {
-      _visitors = data;
+
+    // ✅ Create a fully mutable copy
+    final List<Map<String, dynamic>> sortedData =
+    data.map((e) => Map<String, dynamic>.from(e)).toList();
+
+    // ✅ Sort the mutable list
+    sortedData.sort((a, b) {
+      DateTime dateA = _parseDateTime(a);
+      DateTime dateB = _parseDateTime(b);
+      return dateB.compareTo(dateA); // latest first
     });
+
+    if (!mounted) return;
+
+    setState(() {
+      _visitors = sortedData; // ✅ use sorted list
+    });
+  }
+
+  DateTime _parseDateTime(Map<String, dynamic> visitor) {
+    try {
+      final rawDate = visitor['in_date'] ?? '';
+      final rawTime = visitor['in_time'] ?? '';
+
+      // ✅ REMOVE ALL SPACES
+      final date = rawDate.replaceAll(' ', '');
+      final time = rawTime.replaceAll(' ', '');
+
+      final dateParts = date.split('/');
+      final day = int.parse(dateParts[0]);
+      final month = int.parse(dateParts[1]);
+      final year = int.parse(dateParts[2]);
+
+      int hour = 0;
+      int minute = 0;
+
+      if (time.isNotEmpty) {
+        final isPM = time.toUpperCase().contains('PM');
+        final cleanTime = time.replaceAll(RegExp(r'[APMapm]'), '');
+
+        final hm = cleanTime.split(':');
+        hour = int.parse(hm[0]);
+        minute = int.parse(hm[1]);
+
+        if (isPM && hour != 12) hour += 12;
+        if (!isPM && hour == 12) hour = 0;
+      }
+
+      return DateTime(year, month, day, hour, minute);
+    } catch (e) {
+      print("❌ Parse error: ${visitor['in_date']} ${visitor['in_time']}");
+      return DateTime(1900);
+    }
   }
 
   @override
@@ -95,8 +153,11 @@ class _VisitorHistoryPageState extends State<VisitorHistoryPage> {
               style: const TextStyle(color: kBlack, fontWeight: FontWeight.bold),
             ),
             subtitle: Text(
-              visitor['company'] ?? 'No Company',
-              style: const TextStyle(color: kBlack),
+              '${visitor['company'] ?? 'No Company'}\nResident: ${visitor['meeting_person']}\nMobile Number: ${visitor['mobile'] ?? 'N/A'}\nPurpose: ${visitor['purpose'] ?? 'N/A'}'
+                  '\nDate: ${visitor['in_date'] ?? 'N/A'} InTime: ${visitor['in_time'] ?? ''} OutTime: ${visitor['out_time']}',
+              style: const TextStyle(
+                color: Colors.black,
+              ),
             ),
             trailing: Icon(Icons.arrow_forward_ios, color: kPrimaryColor),
             onTap: () async {

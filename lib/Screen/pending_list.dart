@@ -75,7 +75,8 @@ class _VisitorListState extends State<VisitorList> {
               ),
             ),
             subtitle: Text(
-              '${visitor['company'] ?? 'No Company'}\nDate: ${visitor['in_date'] ?? 'N/A'} Time: ${visitor['in_time'] ?? ''}',
+              '${visitor['company'] ?? 'No Company'}\nResident: ${visitor['meeting_person']}\nMobile Number: ${visitor['mobile'] ?? 'N/A'}\nPurpose: ${visitor['purpose'] ?? 'N/A'}'
+                  '\nDate: ${visitor['in_date'] ?? 'N/A'} Time: ${visitor['in_time'] ?? ''}',
               style: const TextStyle(
                 color: Colors.black,
               ),
